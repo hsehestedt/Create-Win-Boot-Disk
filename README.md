@@ -1,7 +1,7 @@
 # Create-Win-Boot-Disk
 This batch file will create a Windows setup disk for you and adds some advanced features.
 
-NOTE: For a more full featured program that includes the ability to create Windows boot as does this batch file but with more features, please see my WIM-Tools project (www.github.com/hsehestedt/WIM-Tools). This batch file duplicates a small portion of the functionality of one routine in that program and is especially useful for those who may want to dissect the batch file to see how it works under the hood.
+NOTE: For a more full featured program that includes the ability to create a Windows boot disk as does this batch file but with more features, please see my WIM-Tools project (www.github.com/hsehestedt/WIM-Tools). This batch file duplicates a small portion of the functionality of one routine in that program and is especially useful for those who may want to dissect the batch file to see how it works under the hood.
 
 This batch file will allow you you to create a Windows boot disk using nothing but native Microsoft tools. Some of the features:
 
