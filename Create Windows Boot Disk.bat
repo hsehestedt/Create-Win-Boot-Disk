@@ -1,4 +1,7 @@
 @echo off
+setlocal enabledelayedexpansion
+setlocal enableextensions
+cd /d %~dp0
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: This batch file will allow you to create a Windows installation disk. This can be a flash drive or a HD.  ::
@@ -9,11 +12,10 @@
 :: and 64-bit editions. Since this batch file is perfectly capable of creating dual architecture media it is ::
 :: perfectly suitable for the creation of both Windows 10 and Windows 11 boot media.                         ::
 ::                                                                                                           ::
-:: Originally created December 2020 by HSehestedt and ZTrucker                                               ::
-:: Updates created and maintaned by HSehestedt                                                               ::
-:: Last updated September 9, 2021                                                                            ::
+:: Originally created December 2020 by HSehestedt and Ztruker                                                ::
+:: Last updated March 15, 2022                                                                               ::
 ::                                                                                                           ::
-:: Version 1.09.00                                                                                           ::
+:: Version 1.22.04                                                                                           ::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -26,8 +28,10 @@
 :: HideDetails - Set to "Y" to hide the details of every file being copied. Set to "N" or anything other than     ::
 ::    "Y" to show the detailed copy status. May be helpful for troubleshooting.                                   ::
 ::                                                                                                                ::
-:: Partition1Size - This specifies the size in MB to create the first FAT32 partition. Suggestion: 2000 MB        ::
-::    (equal to 2GB) should be a good value for almost any situation. Use a number only (no MB after the number). ::
+:: Partition1Size - This specifies the size in MB to create the first FAT32 partition. Suggestion: 1000 MB        ::
+::    (roughly 1GB) should be a good value for most situations. Use a number only (no MB after the number). If    ::
+::    use a customized image with many Windows editions, it's possible that you may need to increase the size of  ::
+::    this partition.                                                                                             ::
 ::                                                                                                                ::
 :: Part2SizeLimit - Set to either "N" or a numerical value. If you set this to "N", the size of the 2nd           ::
 ::    partition will be unlimited and will be created with all the remaining space not used by partition 1. If    ::
@@ -50,15 +54,22 @@
 ::    greatest compatibility with both BIOS and UEFI based systems. However, it is limited to disks with up to    ::
 ::    2TB in size. If you plan to use a disk larger than 2TB you must specify a GPT partition type. Please be     ::
 ::    aware that doing this will limit compatibility so that it will not work on BIOS based systems.              ::
+::                                                                                                                ::
+:: AutoDismount - Set this to Y if you want the source ISO image to be automatically dismounted by this batch     ::
+::    file when it is done running. If you do NOT want the image dismounted, set this to N. NOTE: Technically,    ::
+::    the image will be dismounted when set to anything other than N.                                             ::
+::    IMPORTANT: Set this to Y only if the source is an ISO image. If you are pointing to a folder on a drive,    ::
+::    then this should be set to N.
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 set HideDetails=N
-set Partition1Size=2000
+set Partition1Size=1000
 set Part2SizeLimit=N
 set Part2FS=NTFS
 set Partition1Name=PAR-1-FAT32
 set Partition2Name=PAR-2-%Part2FS%
 set PartType=MBR
+set AutoDismount=N
 
 :start
 
@@ -73,14 +84,6 @@ set flag=/nfl /ndl
 ) ELSE (
 set flag=
 )
-
-:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-:: Enable Delayed Expansion and Extensions, and change to the directory where the batch file is located. ::
-:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-setlocal enabledelayedexpansion
-setlocal enableextensions
-cd /d %~dp0
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Check to see if this batch file is being run as Administrator. If it is not, then rerun the batch file ::
@@ -283,6 +286,10 @@ echo File copy status details WILL NOT be displayed
 echo File copy status details WILL be displayed
 )
 
+if %AutoDismount%==Y (
+echo The ISO image will be automatically dismounted when we are done with it
+)
+
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: The summary items below apply only to WIPE operations, so if a ::
 :: REFRESH is being performed, skip this section                  ::
@@ -348,14 +355,14 @@ exit
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 cls
-if %WipeRefresh%==WIPE echo We are partitioning the destination drive and copying files.
+if %WipeRefresh%==WIPE echo We are performing the initial partitioning the destination drive to free up any used drive letters.
 if %WipeRefresh%==REFRESH echo We are formatting drives %Partition1%: and %Partition2%:	and copying files. Other partitions will be left alone.
-echo Please be patient^^! This can take a while especially if your drive is slow.
+echo Please be patient^^! This can take a while if your drive is slow.
 echo.
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: If we are performing a REFRESH, then there are a lot of steps that we can skip. ::
-:: As a result, we will skip to the CopyOperations section.                     ::
+:: As a result, we will skip to the CopyOperations section.                        ::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 if %WipeRefresh%==REFRESH goto CopyOperations
@@ -364,28 +371,67 @@ if %WipeRefresh%==REFRESH goto CopyOperations
 :: We will first wipe the selected disk. This will free up any drive letters currently used by that disk. ::
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
+:: NOTE: A problem has been observed recently where the CLEAN command run within DiskPart will fail the first
+::       time that it is run. It often succeeds the 2nd time, but not always. However, this problem only
+::       happens when the disk is MBR, not GPT. As a result, we try to perform a clean and convert to GPT.
+::       Then, we finally set the disk to the correct type (MBR or GPT) based on user preference.
+
 (echo select disk %DiskID%
+echo clean
+echo convert gpt
+echo clean
+echo convert gpt
 echo clean
 echo convert %PartType%
 echo rescan
 echo exit
 ) | diskpart > nul
 
-::::::::::::::::::::::::::::::::::::::::::::::::
-:: Determine the first available drive letter ::
-::::::::::::::::::::::::::::::::::::::::::::::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+:: Ask user for drive letters to assign to the partitions on the destination drive ::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-for %%a in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do if not exist %%a:\nul (
-set Partition1=%%a
-goto DriveLetter1Found
+:GetPar1DriveLetter
+
+cls
+echo Please enter the drive letter to assign to the FIRST partition (the FAT32 partition). Please enter
+echo a drive letter only with no colon (:).
+echo.
+set /p Partition1="Enter the drive letter to assign to Partition #1: "
+
+if exist %Partition1%: (
+echo.
+echo That drive letter is already in use. Please choose another.
+echo.
+pause
+goto GetPar1DriveLetter
 )
-:DriveLetter1Found
 
+:GetPar2DriveLetter
+
+cls
+echo Please enter the drive letter to assign to the SECOND partition (the NTFS partition). Please enter
+echo a drive letter only with no colon (:).
+echo.
+set /p Partition2="Enter the drive letter to assign to Partition #2: "
+
+if exist %Partition2%: (
+echo.
+echo That drive letter is already in use. Please choose another.
+echo.
+pause
+goto GetPar2DriveLetter
+)
+
+:::::::::::::::::::::::::::::::::
+:: Prepare the first partition ::
+:::::::::::::::::::::::::::::::::
+
+cls
 echo The first partition will be assigned drive letter %Partition1%: and will be formatted with FAT32.
 
 (echo select disk %DiskID%
 echo create partition primary size=%Partition1Size%
-echo select partition 1
 echo format fs=fat32 quick
 echo assign letter=%Partition1%
 echo active
@@ -393,19 +439,14 @@ echo rescan
 echo exit
 ) | diskpart > nul
 
-:::::::::::::::::::::::::::::::::::::::::::::::
-:: Determine the next available drive letter ::
-:::::::::::::::::::::::::::::::::::::::::::::::
+::::::::::::::::::::::::::::::::::
+:: Prepare the second partition ::
+::::::::::::::::::::::::::::::::::
 
-for %%a in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do if not exist %%a:\nul (
-set Partition2=%%a
-goto DriveLetter2Found
-)
-:DriveLetter2Found
 echo The second partition will be assigned drive letter %Partition2%: and will be formatted with %Part2FS%.
 echo.
 
-if %Part2SizeLimit%=="N" goto NoSizeLimit
+if %Part2SizeLimit%==N goto NoSizeLimit
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: User has elected to create the second partition with a specific size ::
@@ -419,6 +460,8 @@ echo rescan
 echo exit
 ) | diskpart > nul
 
+goto PartitionsCreated
+
 :NoSizeLimit
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -431,7 +474,7 @@ echo format fs=%Part2FS% quick
 echo assign letter=%Partition2%
 echo rescan
 echo exit
-) | diskpart > nul
+) | diskpart > NUL
 
 :PartitionsCreated
 
@@ -531,6 +574,20 @@ if %ERRORLEVEL% gtr 3 goto ErrorHandler2
 :: echo Retail >> %Partition2%:\x86\sources\ei.cfg
 
 :DoneCopying
+
+:::::::::::::::::::::::::::::
+:: Dismount the disk image ::
+:::::::::::::::::::::::::::::
+
+IF %AutoDismount%==N goto DismountDone
+
+:: Strip the backslash from the path
+IF "!SourcePath:~-1!"=="\" SET SourcePath=!SourcePath:~,-1!
+
+:: Dismount the image
+powershell.exe -command "Dismount-DiskImage -DevicePath \\.\%SourcePath%" > NUL
+
+:DismountDone
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Inform the user that we are done. Also, as a precaution, check to see if an ::
